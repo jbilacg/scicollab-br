@@ -1,0 +1,78 @@
+╔════════════════════════════════════════════════════════════════════════╗
+║                                                                        ║
+║    🎯 INÍCIO RÁPIDO — Grafo de Colaboração Científica                ║
+║                                                                        ║
+║    Quer gerar um .exe para rodar SEM Python instalado?               ║
+║    Siga apenas 3 passos:                                             ║
+║                                                                        ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASSO 1: VERIFICAR ARQUIVOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Abra a pasta onde você baixou os arquivos.
+
+Confirme que existem ESTES 3 arquivos:
+  ✓ gui_openalex.py
+  ✓ openalex_colab.py
+  ✓ requirements.txt
+
+Se faltam arquivos → Baixe de novo do repositório!
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASSO 2: VERIFICAR AMBIENTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Abra PowerShell (Windows) ou Terminal (Mac/Linux) naquela pasta.
+
+Digite:
+  python verificar_ambiente.py
+
+Deve aparecer ✓ em tudo (Python, arquivos, dependências, PyInstaller).
+
+Se aparecer ❌ em algo → Siga as instruções mostradas.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASSO 3: GERAR EXECUTÁVEL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Mesmo terminal, digite:
+  python build_exe.py
+
+Aguarde 5-15 minutos.
+
+Ao final, você terá:
+  dist/Grafo de Colaboracao.exe  (~150 MB)
+
+✓ PRONTO! Clique no .exe para rodar. Sem Python necessário!
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QUER CRIAR UM INSTALADOR PROFISSIONAL?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Leia: BUILD_EXECUTAVEL.md
+
+(Requer NSIS instalado, mas opcional)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MAIS INFORMAÇÕES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📖 Guias disponíveis:
+
+  • COMECE_AQUI.md        → Para usuários (como usar a interface)
+  • DOWNLOAD_CHECKLIST.md → Checklist de arquivos necessários
+  • BUILD_EXECUTAVEL.md   → Como gerar .exe e setup.exe
+  • KPI_DOCUMENTACAO.md   → O que significa cada métrica
+  • PROJETO_RESUMO.md     → Visão geral técnica do projeto
+
+🆘 Problema? Leia DOWNLOAD_CHECKLIST.md
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

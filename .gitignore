@@ -1,0 +1,21 @@
+# Build artifacts do PyInstaller — o executável final vai como asset
+# na página de Releases do GitHub, não commitado no histórico do repo
+# (arquivos >100MB não são aceitos pelo git normal).
+build/
+dist/
+
+# Saídas geradas por execuções (grafos, CSVs, gráficos) — são dados
+# de teste/uso local, não fazem parte do código-fonte do projeto.
+resultados/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# SO
+.DS_Store
+Thumbs.db
