@@ -186,6 +186,7 @@ conectado. Veja seção 3 para interpretação.
 | `_tamanho_comunidades.png` | Tamanho de cada comunidade detectada | Visualizar rapidamente se há um grupo dominante ou vários grupos parecidos em tamanho |
 | `_publicacoes_por_ano.png` | Evolução do nº de publicações ao longo do tempo | Ver se a produção do grupo está crescendo, estável ou caindo |
 | `_produtividade_vs_centralidade.png` | Relação entre total de publicações e centralidade de grau | Ver se quem mais publica é também quem mais colabora, ou se são perfis diferentes (ex: alguém muito produtivo mas que trabalha sozinho) |
+| `_top_instituicoes_parceiras.png` | As 15 instituições com mais publicações em comum com a universidade analisada | Identificar as principais parceiras institucionais (nacionais e internacionais) |
 
 ---
 
@@ -198,6 +199,32 @@ conectado. Veja seção 3 para interpretação.
 | `_comunidades.csv` | Lista de membros de cada comunidade detectada | Uma comunidade |
 | `_publicacoes_por_ano.csv` | Contagem de publicações únicas por ano | Um ano |
 | `_resumo_metricas.csv` | KPIs agregados da rede inteira (seção 4) | Uma métrica |
+| `_instituicoes.csv` | Instituições da rede entre universidades, com país, publicações na amostra, grau, centralidades e comunidade (seção 6.1) | Uma instituição |
+| `_colaboracoes_instituicoes.csv` | Pares de instituições e quantas publicações têm em comum | Uma colaboração entre instituições |
+
+### 6.1 Rede de colaboração entre instituições
+
+Além do grafo de pesquisadores, o programa gera `_instituicoes.html` (e
+`_instituicoes.gexf`), em que **cada nó é uma instituição** e há uma aresta
+quando autores afiliados às duas instituições assinam a mesma publicação. O
+peso da aresta é o nº de publicações em comum.
+
+- A rede é montada a partir das **mesmas publicações** coletadas para o
+  grafo de pesquisadores (mesmos filtros de área, período e limites); não
+  é a produção completa de cada instituição, e sim a amostra ligada aos
+  pesquisadores da universidade analisada. Só entram publicações em que a
+  universidade analisada aparece nas afiliações (publicações feitas por
+  outros vínculos do pesquisador, como um pós-doc no exterior, ficam de
+  fora). Por isso a universidade analisada aparece como hub central.
+- Cada publicação é contada uma única vez, mesmo que tenha sido encontrada
+  na busca de vários pesquisadores.
+- `publicacoes_na_amostra`: em quantas publicações da amostra a instituição
+  aparece em alguma afiliação.
+- `--max-institutions` (padrão 100) mantém apenas as instituições com mais
+  publicações na amostra; instituições sem nenhuma colaboração após esse
+  corte são removidas.
+- `--restrict-to-institution` **não** se aplica a esta rede (ela é, por
+  definição, sobre colaboração com outras instituições).
 
 Todos os CSVs são salvos em UTF-8 com BOM (`utf-8-sig`), formato que o Excel
 no Windows reconhece automaticamente e exibe os acentos corretamente, sem
@@ -221,3 +248,18 @@ precisar configurar nada na hora de abrir.
   podem não entrar na amostra.
 - **Comunidades não são departamentos**: repetindo o ponto da seção 3,
   porque é o erro de interpretação mais comum.
+- **Autoria em massa fica de fora das redes**: publicações com mais de
+  `--max-authors-per-work` autores (padrão 50, ex: grandes colaborações de
+  física de partículas) não geram arestas nos grafos de pesquisadores nem
+  de instituições, porque ligariam milhares de pessoas que nunca
+  trabalharam juntas de fato. Elas continuam contando no gráfico de
+  publicações por ano.
+- **Peso das arestas**: cada publicação é contada uma única vez, mesmo
+  quando aparece na busca de vários pesquisadores da amostra.
+- **Intermediação aproximada em redes grandes**: acima de 1000 nós no maior
+  componente, `centralidade_intermediacao` é estimada a partir de uma
+  amostra de 200 nós (semente fixa, resultado reproduzível). Os valores
+  exatos mudam um pouco, mas o ranking dos mais centrais se mantém; o
+  cálculo exato levaria horas.
+- **HTML limitado a 1500 nós**: em grafos maiores, o `.html` mostra só os
+  nós mais conectados; o `.gexf` sempre contém o grafo completo.

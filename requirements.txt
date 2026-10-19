@@ -3,3 +3,4 @@ networkx>=3.2
 python-louvain>=0.16
 pyvis>=0.3.2
 matplotlib>=3.8.0
+sv-ttk>=2.5

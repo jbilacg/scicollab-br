@@ -48,11 +48,14 @@ A partir do nome de uma universidade (+ filtros opcionais de área e
 período):
 
 - **Grafo interativo** em HTML (zoom, arraste, física de nós) via `pyvis`
-- **Arquivo `.gexf`** para abrir no [Gephi](https://gephi.org)
-- **6 gráficos** descritivos em PNG (distribuição de grau, ranking de
-  centralidade/intermediação, publicações por ano, tamanho de comunidades…)
-- **5 planilhas CSV** com os dados brutos (pesquisadores, coautorias,
-  comunidades, métricas resumo)
+- **Rede de colaboração entre universidades/instituições** (também em HTML
+  interativo), montada a partir das afiliações dos coautores
+- **Arquivos `.gexf`** para abrir no [Gephi](https://gephi.org)
+- **7 gráficos** descritivos em PNG (distribuição de grau, ranking de
+  centralidade/intermediação, publicações por ano, tamanho de comunidades,
+  principais instituições parceiras…)
+- **7 planilhas CSV** com os dados brutos (pesquisadores, coautorias,
+  comunidades, métricas resumo, instituições e colaborações entre elas)
 
 Métricas calculadas: grau, centralidade de grau/intermediação, detecção de
 comunidades (algoritmo Louvain), densidade da rede, entre outras — ver
@@ -86,6 +89,8 @@ python openalex_colab.py --institution "Universidade de Sao Paulo"
 | `--max-authors` | Nº máximo de pesquisadores a coletar | 100 |
 | `--max-works-per-author` | Nº máximo de publicações por pesquisador | 50 |
 | `--restrict-to-institution` | Só mantém arestas entre pesquisadores da própria instituição | desativado |
+| `--max-institutions` | Nº máximo de instituições na rede entre universidades | 100 |
+| `--max-authors-per-work` | Ignora nas redes publicações com mais autores que isso (autoria em massa); 0 = sem limite | 50 |
 | `--output` | Prefixo dos arquivos de saída | `grafo_colaboracao` |
 
 Exemplo — rede interna da UFRJ, mais enxuta:
