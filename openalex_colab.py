@@ -25,6 +25,7 @@ Requisitos:
 
 import argparse
 import csv
+import json
 import time
 import sys
 from collections import defaultdict
@@ -556,7 +557,7 @@ def export_institution_outputs(G, inst_metrics, output_prefix="grafo_colaboracao
         return
 
     prefix = f"{output_prefix}_instituicoes"
-    export_graph(G, output_prefix=prefix)
+    export_graph(G, output_prefix=prefix, spacious=True)
 
     degree_cent = inst_metrics.get("degree_centrality", {})
     betweenness_cent = inst_metrics.get("betweenness_centrality", {})
@@ -702,12 +703,15 @@ def _fix_pyvis_template_path():
         pyvis.__file__ = os.path.join(meipass, "pyvis", "__init__.py")
 
 
-def export_graph(G, output_prefix="grafo_colaboracao", max_html_nodes=1500):
+def export_graph(G, output_prefix="grafo_colaboracao", max_html_nodes=1500, spacious=False):
     """
     Exporta o grafo para .gexf (Gephi) e gera visualização interativa em HTML.
     O .gexf sempre leva o grafo completo; o HTML mostra no máximo max_html_nodes
     nós (os de maior grau) -- acima disso o pyvis fica lento demais para gerar
     e o navegador não consegue renderizar de forma legível.
+    spacious=True afasta mais os nós e usa fonte menor: para grafos com poucos
+    nós de rótulos longos (ex: nomes de instituições), que no layout padrão
+    ficam com os nomes sobrepostos.
     """
     gexf_path = f"{output_prefix}.gexf"
     nx.write_gexf(G, gexf_path, encoding="utf-8")
@@ -731,6 +735,7 @@ def export_graph(G, output_prefix="grafo_colaboracao", max_html_nodes=1500):
         # cores por comunidade, se existir
         comm_attr = nx.get_node_attributes(G, "community")
         degree_dict = dict(G.degree())
+        font_size = 16 if spacious else 22
 
         for node_id, attrs in G.nodes(data=True):
             comm = comm_attr.get(node_id, 0)
@@ -742,7 +747,7 @@ def export_graph(G, output_prefix="grafo_colaboracao", max_html_nodes=1500):
                 group=comm,
                 # nó um pouco maior para quem tem mais colaborações
                 size=15 + min(degree * 2, 30),
-                font={"size": 22, "color": "#222222", "strokeWidth": 3, "strokeColor": "#ffffff"},
+                font={"size": font_size, "color": "#222222", "strokeWidth": 3, "strokeColor": "#ffffff"},
             )
 
         # Arestas adicionadas direto na lista: o net.add_edge() do pyvis percorre
@@ -755,25 +760,19 @@ def export_graph(G, output_prefix="grafo_colaboracao", max_html_nodes=1500):
 
         # Rótulos sempre visíveis (não só ao passar o mouse), zoom/arraste liberados,
         # e estabilização configurada para "assentar" o layout mais rápido.
-        net.set_options("""
-        {
-          "nodes": {
-            "font": {"size": 22, "face": "arial"}
-          },
-          "interaction": {
-            "hover": true,
-            "navigationButtons": true,
-            "keyboard": true
-          },
-          "physics": {
-            "stabilization": {
-              "enabled": true,
-              "iterations": 300,
-              "fit": true
-            }
-          }
+        # Obs: set_options substitui TODAS as opções do pyvis, inclusive as do
+        # net.barnes_hut() acima -- ajustes de física precisam entrar aqui.
+        options = {
+            "nodes": {"font": {"size": font_size, "face": "arial"}},
+            "interaction": {"hover": True, "navigationButtons": True, "keyboard": True},
+            "physics": {"stabilization": {"enabled": True, "iterations": 300, "fit": True}},
         }
-        """)
+        if spacious:
+            options["physics"]["barnesHut"] = {
+                "gravitationalConstant": -20000, "centralGravity": 0.15,
+                "springLength": 220, "springConstant": 0.02, "avoidOverlap": 0.6,
+            }
+        net.set_options(json.dumps(options))
 
         html_path = f"{output_prefix}.html"
         # Gera o HTML manualmente e grava forçando UTF-8: no Windows, o
