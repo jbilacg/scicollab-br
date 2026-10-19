@@ -649,8 +649,13 @@ class OpenAlexGUI:
         for r, (key, label, default, lo, hi, hint) in enumerate(rows):
             ttk.Label(grid, text=label, style="Body.TLabel").grid(row=r, column=0, sticky="w", pady=5)
             self.fields[key] = tk.IntVar(value=default)
-            ttk.Spinbox(grid, from_=lo, to=hi, textvariable=self.fields[key], width=8).grid(
-                row=r, column=1, sticky="w", padx=14, pady=5
+            spin = ttk.Spinbox(grid, from_=lo, to=hi, textvariable=self.fields[key], width=8)
+            spin.grid(row=r, column=1, sticky="w", padx=14, pady=5)
+            # Sem isto, rolar a página com o cursor sobre o campo muda o valor
+            # sem a pessoa perceber -- a roda passa a rolar o formulário.
+            spin.bind(
+                "<MouseWheel>",
+                lambda ev: (self._canvas.yview_scroll(-1 * (ev.delta // 120), "units"), "break")[1],
             )
             ttk.Label(grid, text=hint, style="Hint.TLabel").grid(row=r, column=2, sticky="w", pady=5)
 
