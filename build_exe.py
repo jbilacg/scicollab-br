@@ -87,6 +87,16 @@ def build_exe():
     add_pyvis       = f"{pyvis_templates}{os.pathsep}pyvis/templates"
     add_pyvis_lib   = f"{pyvis_lib}{os.pathsep}pyvis/templates/lib"
 
+    # Tema visual Sun Valley (sv-ttk): os arquivos .tcl e as imagens do tema
+    # também são dados do pacote. Opcional — sem ele a interface usa o tema padrão.
+    try:
+        import sv_ttk as _sv_ttk
+        add_sv_ttk = ["--add-data", f"{Path(_sv_ttk.__file__).parent}{os.pathsep}sv_ttk",
+                      "--hidden-import=sv_ttk"]
+    except ImportError:
+        print("⚠ sv-ttk não instalado — o executável usará o tema padrão (pip install sv-ttk)")
+        add_sv_ttk = []
+
     # Comando PyInstaller
     cmd = [
         sys.executable,
@@ -101,6 +111,7 @@ def build_exe():
         # Templates do pyvis (Jinja2) — obrigatório para gerar o HTML do grafo
         "--add-data", add_pyvis,
         "--add-data", add_pyvis_lib,
+        *add_sv_ttk,
         # openalex_colab é importado diretamente (não como subprocess)
         "--hidden-import=openalex_colab",
         "--hidden-import=tkinter",

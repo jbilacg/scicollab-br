@@ -11,8 +11,10 @@ Fluxo:
   4. Monta um grafo (networkx) onde:
        - nós = pesquisadores (autores)
        - arestas = coautoria em pelo menos 1 publicação (peso = nº de publicações em comum)
-  5. Calcula métricas descritivas e detecta comunidades
-  6. Exporta grafo para .gexf (abre no Gephi) e gera visualização HTML interativa
+  5. Monta também um grafo de colaboração entre INSTITUIÇÕES, a partir das
+     afiliações dos autores em cada publicação (mesmos dados, sem requisições extras)
+  6. Calcula métricas descritivas e detecta comunidades
+  7. Exporta os grafos para .gexf (abre no Gephi) e gera visualizações HTML interativas
 
 Uso:
     python openalex_colab.py --institution "Universidade de Sao Paulo" --max-authors 200 --max-works-per-author 50
@@ -304,7 +306,7 @@ def get_authors_by_institution(institution_id, max_authors=200, topic_ids=None, 
 
 
 def get_coauthorships(author_ids, max_works_per_author=50, topic_ids=None, concept_id=None,
-                       year_from=None, year_to=None):
+                       year_from=None, year_to=None, max_authors_per_work=50):
     """
     Para cada autor, busca suas publicações e monta pares de coautoria.
     Se topic_ids (lista de IDs, ou concept_id legado) for informado, filtra
@@ -315,17 +317,25 @@ def get_coauthorships(author_ids, max_works_per_author=50, topic_ids=None, conce
     Se year_from/year_to forem informados, filtra as publicações a esse período
     (ambos inclusivos; qualquer um dos dois pode ser omitido para deixar o
     intervalo aberto de um dos lados).
+    Cada publicação é processada uma única vez, mesmo que seja encontrada na
+    busca de vários pesquisadores. Publicações com mais de max_authors_per_work
+    autores (autoria em massa) contam no gráfico por ano, mas ficam fora das
+    redes; use None ou 0 para não aplicar esse limite.
     Retorna:
         edges: dict {(id1, id2): peso}  (id1 < id2 para evitar duplicidade)
         author_names: dict {id: nome}   (inclui coautores externos à instituição)
         works_by_year: dict {work_id: ano}  (publicações únicas, deduplicadas, para
                                               gráfico de evolução temporal)
+        works_institutions: dict {work_id: {inst_id: {"name": ..., "country": ...}}}
+                            (instituições afiliadas em cada publicação única, para
+                             o grafo de colaboração entre instituições)
     """
     edges = defaultdict(int)
     author_names = {}
     works_by_year = {}
-
-    author_ids_set = set(author_ids)
+    works_institutions = {}
+    seen_works = set()
+    skipped_large = 0
 
     topic_short_ids = [t.split("/")[-1] for t in topic_ids] if topic_ids else None
     concept_short_id = concept_id.split("/")[-1] if (concept_id and not topic_ids) else None
@@ -361,31 +371,59 @@ def get_coauthorships(author_ids, max_works_per_author=50, topic_ids=None, conce
 
         for w in works:
             work_id = w.get("id")
+            # A mesma publicação aparece na busca de cada pesquisador da amostra
+            # que a assina -- processa só a primeira vez, senão o peso das
+            # arestas (nº de publicações em comum) fica inflado.
+            if not work_id or work_id in seen_works:
+                continue
+            seen_works.add(work_id)
+
             year = w.get("publication_year")
-            if work_id and year and work_id not in works_by_year:
+            if year:
                 works_by_year[work_id] = year
 
             authorships = w.get("authorships", [])
-            # extrai todos os coautores da publicação
-            coauthors = []
+
+            # Publicações com autoria em massa (ex: colaborações de física com
+            # milhares de autores) viram cliques gigantes que dominam o grafo
+            # e travam a visualização -- ficam de fora das redes de colaboração.
+            if max_authors_per_work and len(authorships) > max_authors_per_work:
+                skipped_large += 1
+                continue
+
+            # instituições afiliadas à publicação
+            insts = {}
+            for a in authorships:
+                for inst in a.get("institutions") or []:
+                    iid = inst.get("id")
+                    if iid:
+                        insts[iid] = {
+                            "name": inst.get("display_name") or iid,
+                            "country": inst.get("country_code") or "",
+                        }
+            works_institutions[work_id] = insts
+
+            # extrai todos os coautores da publicação (sem repetição)
+            coauthors = {}
             for a in authorships:
                 aid = a.get("author", {}).get("id")
-                aname = a.get("author", {}).get("display_name")
                 if aid:
-                    coauthors.append((aid, aname))
-                    author_names[aid] = aname
+                    coauthors[aid] = a.get("author", {}).get("display_name")
+            author_names.update(coauthors)
 
             # cria arestas entre todos os pares de coautores da publicação
-            for x in range(len(coauthors)):
-                for y in range(x + 1, len(coauthors)):
-                    id1, id2 = sorted([coauthors[x][0], coauthors[y][0]])
-                    if id1 == id2:
-                        continue
-                    edges[(id1, id2)] += 1
+            ids = sorted(coauthors)
+            for x in range(len(ids)):
+                for y in range(x + 1, len(ids)):
+                    edges[(ids[x], ids[y])] += 1
 
         time.sleep(0.4)  # gentileza com a API (evita 429 Too Many Requests)
 
-    return edges, author_names, works_by_year
+    if skipped_large:
+        print(f"\n{skipped_large} publicação(ões) com mais de {max_authors_per_work} autores "
+              f"ignorada(s) nas redes de colaboração (autoria em massa).")
+
+    return edges, author_names, works_by_year, works_institutions
 
 
 def build_graph(edges, author_names, institution_author_ids, restrict_to_institution=False):
@@ -411,6 +449,186 @@ def build_graph(edges, author_names, institution_author_ids, restrict_to_institu
     return G
 
 
+def build_institution_graph(works_institutions, target_institution_id, max_institutions=100):
+    """
+    Constrói o grafo de colaboração entre instituições:
+      - nós = instituições que aparecem nas afiliações das publicações coletadas
+      - arestas = publicações em que as duas instituições aparecem juntas
+                  (peso = nº de publicações em comum)
+    Só entram publicações em que a instituição analisada aparece nas afiliações
+    -- pesquisadores da amostra também publicam por outros vínculos (ex:
+    pós-doc no exterior), e essas publicações não são parcerias da instituição.
+    Mantém só as max_institutions instituições com mais publicações na amostra
+    (a instituição analisada é sempre mantida), para o grafo continuar legível.
+    """
+    works_institutions = {
+        wid: insts for wid, insts in works_institutions.items() if target_institution_id in insts
+    }
+
+    work_counts = defaultdict(int)
+    info = {}
+    for insts in works_institutions.values():
+        for iid, data in insts.items():
+            work_counts[iid] += 1
+            info[iid] = data
+
+    ranked = sorted(work_counts, key=lambda i: -work_counts[i])
+    keep = set(ranked[:max_institutions])
+    if target_institution_id in work_counts:
+        keep.add(target_institution_id)
+
+    edges = defaultdict(int)
+    for insts in works_institutions.values():
+        ids = sorted(i for i in insts if i in keep)
+        for x in range(len(ids)):
+            for y in range(x + 1, len(ids)):
+                edges[(ids[x], ids[y])] += 1
+
+    G = nx.Graph()
+    for iid in keep:
+        name, country = info[iid]["name"], info[iid]["country"]
+        G.add_node(
+            iid,
+            label=name,
+            country=country,
+            works_in_sample=work_counts[iid],
+            is_target_institution=iid == target_institution_id,
+            title=f"{name} ({country or '?'}) — {work_counts[iid]} publicações na amostra",
+        )
+    for (i1, i2), weight in edges.items():
+        G.add_edge(i1, i2, weight=weight)
+
+    # instituições que nunca aparecem junto com outra não têm colaboração a mostrar
+    G.remove_nodes_from([n for n in list(G.nodes) if G.degree(n) == 0 and n != target_institution_id])
+
+    print(f"\nGrafo de instituições: {len(works_institutions)} publicações com a instituição analisada, "
+          f"{G.number_of_nodes()} instituições (de {len(work_counts)} encontradas nas afiliações), "
+          f"{G.number_of_edges()} colaborações.")
+    if not works_institutions:
+        print("  Nenhuma publicação coletada tem a instituição analisada nas afiliações -- os pesquisadores "
+              "da amostra provavelmente publicaram por outros vínculos. Tente filtrar por área.")
+    return G
+
+
+def compute_institution_metrics(G, target_institution_id):
+    """Métricas do grafo de instituições: centralidades, comunidades e principais parceiras."""
+    if G.number_of_nodes() == 0:
+        return {}
+
+    degree_cent = nx.degree_centrality(G)
+    betweenness_cent = _betweenness(G)
+
+    communities = {}
+    if community_louvain is not None and G.number_of_edges() > 0:
+        communities = community_louvain.best_partition(G, weight="weight")
+        nx.set_node_attributes(G, communities, "community")
+
+    partners = []
+    if target_institution_id in G:
+        partners = sorted(
+            ((nbr, G[target_institution_id][nbr]["weight"]) for nbr in G.neighbors(target_institution_id)),
+            key=lambda x: -x[1],
+        )
+
+    print("\n===== COLABORAÇÃO ENTRE INSTITUIÇÕES =====")
+    print("Top 10 instituições parceiras (publicações em comum com a instituição analisada):")
+    for iid, w in partners[:10]:
+        print(f"  {G.nodes[iid]['label']:<55} {w}")
+
+    return {
+        "degree_centrality": degree_cent,
+        "betweenness_centrality": betweenness_cent,
+        "communities": communities,
+        "partners": partners,
+    }
+
+
+def export_institution_outputs(G, inst_metrics, output_prefix="grafo_colaboracao"):
+    """
+    Exporta o grafo de instituições:
+      - _instituicoes.html / _instituicoes.gexf  -> grafo interativo e para o Gephi
+      - _instituicoes.csv                        -> uma instituição por linha, com métricas
+      - _colaboracoes_instituicoes.csv           -> um par de instituições por linha
+      - _top_instituicoes_parceiras.png          -> principais parceiras da instituição analisada
+    """
+    if G.number_of_nodes() == 0:
+        print("[Grafo de instituições vazio — nenhuma afiliação encontrada nas publicações]")
+        return
+
+    prefix = f"{output_prefix}_instituicoes"
+    export_graph(G, output_prefix=prefix)
+
+    degree_cent = inst_metrics.get("degree_centrality", {})
+    betweenness_cent = inst_metrics.get("betweenness_centrality", {})
+    communities = inst_metrics.get("communities", {})
+    partners = inst_metrics.get("partners", [])
+    degree_dict = dict(G.degree())
+
+    with open(f"{prefix}.csv", "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "id", "nome", "pais", "instituicao_analisada", "publicacoes_na_amostra",
+            "grau_instituicoes_parceiras", "centralidade_grau", "centralidade_intermediacao",
+            "comunidade_id",
+        ])
+        for iid, attrs in sorted(G.nodes(data=True), key=lambda x: -x[1]["works_in_sample"]):
+            writer.writerow([
+                iid, attrs["label"], attrs["country"], attrs["is_target_institution"],
+                attrs["works_in_sample"], degree_dict.get(iid, 0),
+                round(degree_cent.get(iid, 0), 6), round(betweenness_cent.get(iid, 0), 6),
+                communities.get(iid, ""),
+            ])
+
+    with open(f"{output_prefix}_colaboracoes_instituicoes.csv", "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "instituicao_1_id", "instituicao_1_nome",
+            "instituicao_2_id", "instituicao_2_nome",
+            "publicacoes_em_comum",
+        ])
+        for u, v, attrs in sorted(G.edges(data=True), key=lambda e: -e[2]["weight"]):
+            writer.writerow([u, G.nodes[u]["label"], v, G.nodes[v]["label"], attrs["weight"]])
+
+    if partners:
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            top = partners[:15]
+            labels = [G.nodes[iid]["label"] for iid, _ in top][::-1]
+            values = [w for _, w in top][::-1]
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.barh(labels, values, color="#937860")
+            ax.set_title("Top 15 instituições parceiras\n(publicações em comum com a instituição analisada)")
+            ax.set_xlabel("Nº de publicações em comum")
+            fig.savefig(f"{output_prefix}_top_instituicoes_parceiras.png", dpi=150)
+            plt.close(fig)
+        except ImportError:
+            print("[matplotlib não instalado — pulando gráfico de instituições parceiras]")
+
+    print(f"CSVs de instituições exportados: {prefix}.csv e {output_prefix}_colaboracoes_instituicoes.csv")
+
+
+# Acima deste nº de nós, a intermediação é estimada por amostragem: o cálculo
+# exato custa O(nós × arestas) e leva horas em redes de dezenas de milhares de
+# nós (ex: 100 pesquisadores da UnB + coautores externos = 14 mil nós).
+BETWEENNESS_EXACT_MAX_NODES = 1000
+BETWEENNESS_SAMPLE_SIZE = 200  # ~35s numa rede de 14 mil nós / 168 mil arestas
+
+
+def _betweenness(G, weight=None):
+    """Centralidade de intermediação exata para redes pequenas, aproximada
+    (amostra de BETWEENNESS_SAMPLE_SIZE nós de origem, semente fixa para o
+    resultado ser reproduzível) para redes grandes."""
+    n = G.number_of_nodes()
+    if n <= BETWEENNESS_EXACT_MAX_NODES:
+        return nx.betweenness_centrality(G, weight=weight)
+    print(f"\nRede grande ({n} nós): intermediação estimada por amostragem de "
+          f"{BETWEENNESS_SAMPLE_SIZE} nós (o cálculo exato levaria horas). "
+          f"Isso pode levar até 1 minuto...")
+    return nx.betweenness_centrality(G, k=BETWEENNESS_SAMPLE_SIZE, weight=weight, seed=42)
+
+
 def compute_metrics(G):
     """Calcula métricas descritivas básicas do grafo."""
     print("\n===== MÉTRICAS DESCRITIVAS =====")
@@ -431,7 +649,7 @@ def compute_metrics(G):
     G_main = G.subgraph(largest_cc).copy()
 
     degree_cent = nx.degree_centrality(G_main)
-    betweenness_cent = nx.betweenness_centrality(G_main, weight="weight")
+    betweenness_cent = _betweenness(G_main, weight="weight")
 
     top_degree = sorted(degree_cent.items(), key=lambda x: -x[1])[:10]
     top_betweenness = sorted(betweenness_cent.items(), key=lambda x: -x[1])[:10]
@@ -484,11 +702,22 @@ def _fix_pyvis_template_path():
         pyvis.__file__ = os.path.join(meipass, "pyvis", "__init__.py")
 
 
-def export_graph(G, output_prefix="grafo_colaboracao"):
-    """Exporta o grafo para .gexf (Gephi) e gera visualização interativa em HTML."""
+def export_graph(G, output_prefix="grafo_colaboracao", max_html_nodes=1500):
+    """
+    Exporta o grafo para .gexf (Gephi) e gera visualização interativa em HTML.
+    O .gexf sempre leva o grafo completo; o HTML mostra no máximo max_html_nodes
+    nós (os de maior grau) -- acima disso o pyvis fica lento demais para gerar
+    e o navegador não consegue renderizar de forma legível.
+    """
     gexf_path = f"{output_prefix}.gexf"
     nx.write_gexf(G, gexf_path, encoding="utf-8")
     print(f"\nGrafo exportado para: {gexf_path} (abra no Gephi para exploração visual avançada)")
+
+    if G.number_of_nodes() > max_html_nodes:
+        top_nodes = sorted(G.degree, key=lambda x: -x[1])[:max_html_nodes]
+        print(f"  Grafo grande ({G.number_of_nodes()} nós): o HTML mostra só os {max_html_nodes} "
+              f"mais conectados. Use o .gexf no Gephi para ver tudo.")
+        G = G.subgraph(n for n, _ in top_nodes)
 
     try:
         _fix_pyvis_template_path()
@@ -509,15 +738,20 @@ def export_graph(G, output_prefix="grafo_colaboracao"):
             net.add_node(
                 node_id,
                 label=attrs.get("label", node_id),
-                title=f"{attrs.get('label', node_id)} (comunidade {comm})",
+                title=attrs.get("title") or f"{attrs.get('label', node_id)} (comunidade {comm})",
                 group=comm,
                 # nó um pouco maior para quem tem mais colaborações
                 size=15 + min(degree * 2, 30),
                 font={"size": 22, "color": "#222222", "strokeWidth": 3, "strokeColor": "#ffffff"},
             )
 
+        # Arestas adicionadas direto na lista: o net.add_edge() do pyvis percorre
+        # todas as arestas já inseridas para checar duplicidade (custo quadrático,
+        # trava com dezenas de milhares de arestas) -- desnecessário aqui, pois
+        # as arestas do networkx já são únicas.
+        from pyvis.edge import Edge
         for u, v, attrs in G.edges(data=True):
-            net.add_edge(u, v, value=attrs.get("weight", 1))
+            net.edges.append(Edge(u, v, False, value=attrs.get("weight", 1)).options)
 
         # Rótulos sempre visíveis (não só ao passar o mouse), zoom/arraste liberados,
         # e estabilização configurada para "assentar" o layout mais rápido.
@@ -828,6 +1062,12 @@ def main():
     parser.add_argument("--restrict-to-institution", action="store_true",
                          help="Se ativado, só mantém arestas entre pesquisadores da própria instituição "
                               "(exclui coautores externos)")
+    parser.add_argument("--max-authors-per-work", type=int, default=50,
+                         help="Ignora nas redes publicações com mais autores que isso (autoria em massa, "
+                              "ex: grandes colaborações de física). 0 = sem limite")
+    parser.add_argument("--max-institutions", type=int, default=100,
+                         help="Nº máximo de instituições no grafo de colaboração entre instituições "
+                              "(mantém as com mais publicações na amostra)")
     parser.add_argument("--output", default="grafo_colaboracao", help="Prefixo dos arquivos de saída")
     args = parser.parse_args()
 
@@ -913,10 +1153,11 @@ def main():
     author_ids = [a["id"] for a in authors]
     author_names = {a["id"]: a["name"] for a in authors}
 
-    edges, coauthor_names, works_by_year = get_coauthorships(
+    edges, coauthor_names, works_by_year, works_institutions = get_coauthorships(
         author_ids, max_works_per_author=args.max_works_per_author,
         topic_ids=topic_ids, concept_id=concept_id,
         year_from=args.year_from, year_to=args.year_to,
+        max_authors_per_work=args.max_authors_per_work,
     )
     author_names.update(coauthor_names)
 
@@ -926,6 +1167,10 @@ def main():
     export_graph(G, output_prefix=args.output)
     generate_charts(G, metrics, authors, works_by_year, output_prefix=args.output)
     export_csvs(G, authors, metrics, works_by_year, output_prefix=args.output)
+
+    G_inst = build_institution_graph(works_institutions, inst_id, max_institutions=args.max_institutions)
+    inst_metrics = compute_institution_metrics(G_inst, inst_id)
+    export_institution_outputs(G_inst, inst_metrics, output_prefix=args.output)
 
 
 if __name__ == "__main__":
